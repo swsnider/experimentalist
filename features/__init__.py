@@ -1,99 +1,60 @@
-class Error(Exception): pass
+'''Implements the public API for the features module.'''
 
+from features import parser
 
 class FeatureConfig(object):
-    OFF = 'off'
-    ON = 'on'
-    def __init__(self, world, config):
+    def __init__(self, config, world):
+        '''Parses a feature configuration.
+
+        Args:
+            config: either a string, in which case we read config from that
+                    file, or a feature configuration string
+            world: a world object that we'll use to interface with the
+                   outside world.
+        '''
+        try:
+            with open(config) as f:
+                self._config = parser.parse_config(f.read(), world)
+        except:
+            self._config = parser.parse_config(config, world)
         self._world = world
-        self.config = self._parse_config(config)
 
-    def is_enabled(self, *args, **kargs):
-        return self.variant(*args, **kargs) != FeatureConfig.OFF
+    def is_enabled(self, feature, request, alternate_id=None):
+        '''Determine whether the given feature is enabled for this request.
 
-    def variant(self, feature_name, request, instance=None, other_id=None):
-        if instance is None and bucket_id is None:
-            raise ValueError('Either a model instance or a other_id must be specified.')
-        bucketing_id = other_id
-        if other_id is None:
-            if instance is not None:
-                bucketing_id = instance.id
+        Args:
+            feature: a string, the key of the feature in the config.
+            request: an object representing the current request.
+            alternate_id: optional. A value convertible to string representing
+                          the actual id to use to bucketize for percentage
+                          based experiments.
 
-        feature = self.config.get(feature_name, None)
-        if not feature:
-            raise ValueError('Feature {0} does not exist in the configuration.'.format(feature_name))
-        if isinstance(feature, basestring)
-            return feature
-        if not getattr(request, 'feature_cache', None):
-            request.feature_cache = {}
-        if bucketing_id in self._cache:
-            return request.feature_cache[bucketing_id]
+        Returns:
+            True or False.
 
-        v, selector = self._variant_from_url(feature_name, request)
-        if not v: v, selector = self._variant_for_user(feature_name, request)
-        if not v: v, selector = self._variant_for_group(feature_name, request)
-        if not v: v, selector = self._variant_for_admin(feature_name, request)
-        if not v: v, selector = self._variant_for_internal(feature_name, request)
-        if not v: v, selector = self._variant_by_percentage(feature_name, bucketing_id)
-        if not v: v, selector = (FeatureConfig.OFF, 'w')
+        Raises:
+            ValueError: if the feature doesn't exist in the configuration
+        '''
+        if feature not in self.config:
+            raise ValueError('Feature {0} is not present in the config'.format(feature))
+        return self.config[feature].is_enabled(request, alternate_id)
 
-        request.feature_cache[bucketing_id] = v
-        return v
+    def variant(self, feature, request, alternate_id=None):
+        '''Determine which feature variant to use for the current request.
 
-    def _variant_from_url(self, feature_name, request):
-        if self.config[feature_name].get('public_url_override', False) or
-           self._world.is_admin(request) or
-           self._world.is_internal(request):
-            features = self._world.get_features(request)
-            for feature in features.split(','):
-                if feature == feature_name:
-                    return FeatureConfig.ON, 'o'
-            return False, False
+        Args:
+            feature: a string, the key of the feature in the config.
+            request: an object representing the current request.
+            alternate_id: optional. A value convertible to string representing
+                          the actual id to use to bucketize for percentage
+                          based experiments.
 
-    def _variant_for_user(self, feature_name, request):
-        if not self.config[feature_name].get('users', False):
-            return False, False
+        Returns:
+            The string name of the variant
 
-        uname = self._world.get_user_name(request)
-        if uname in self.config[feature_name]['users']:
-            return self.config[feature_name]['users'][uname], 'u'
-        return False, False
-
-    def _variant_for_group(self, feature_name, request):
-        if not self.config[feature_name].get('groups', False):
-            return False, False
-
-        groups = self._world.get_group_list(request)
-        for group in groups:
-            if group in self.config[feature_name]['groups']:
-                return self.config[feature_name]['groups'][group], 'g'
-        return False, False
-
-    def _variant_for_admin(self, feature_name, request):
-        if not self.config[feature_name].get('admin', False):
-            return False, False
-
-        if self._world.is_admin(request):
-            return self.config[feature_name]['admin'], 'a'
-
-        return False, False
-
-    def _variant_for_internal(self, feature_name, request):
-        if not self.config[feature_name].get('internal', False):
-            return False, False
-
-        if self._world.is_internal(request):
-            return self.config[feature_name]['internal'], 'a'
-
-        return False, False
-
-    def _randomish(self, feature_name, bucketing_id):
-        if self.config[feature_name].get('bucketing', True) == 'random':
-            return self._world.random()
-        return self._world.hash(feature_name + '-' + bucketing_id)
-
-    def _variant_by_percentage(self, feature_name, bucketing_id):
-        n = 100 * self.randomish(feature_name, bucketing_id)
-        for percent, v in self.config[feature_name].get('percentages', {}):
-            if n < percent || percent == 100:
-                return v, 'w'
+        Raises:
+            ValueError: if the feature doesn't exist in the configuration
+        '''
+        if feature not in self.config:
+            raise ValueError('Feature {0} is not present in the config'.format(feature))
+        return self.config[feature].variant(request, alternate_id)
