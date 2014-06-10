@@ -17,12 +17,21 @@ class Feature(object):
     def __init__(self, feature, world, stanza):
         self._feature = feature
         self._world = world
+        if isinstance(stanza, basestring):
+            stanza = dict(enabled=stanza)
+        if isinstance(stanza, int) or isinstance(stanza, float):
+            stanza = dict(percentages=[(stanza, 'on')])
+        if isinstance(stanza.get('enabled', ''), int) or isinstance(stanza.get('enabled', ''), float):
+            pers = stanza.get('percentages', [])
+            pers.append((stanza.get('enabled'), 'on'))
+            stanza['percentages'] = pers
+            del stanza['enabled']
         self._users = stanza.get('users', None)
         self._groups = stanza.get('groups', None)
         self._admin = stanza.get('admin', None)
         self._internal = stanza.get('internal', None)
-        self._percentages = compute_percentages(stanza.get('percentages', None))
-        self._url = stanza.get('url', None)
+        self._percentages = compute_percentages(stanza.get('percentages', []))
+        self._url = stanza.get('url', 'on')
         self._enabled = stanza.get('enabled', None)
         self._public_url = stanza.get('public_url_override', None)
         self._random = stanza.get('random', False)
@@ -53,16 +62,16 @@ class Feature(object):
         Returns:
             The string name of the variant
         '''
-        if self._enabled:
+        if self._enabled is not None:
             return self._enabled
 
         bucketing_id = self._world.get_bucket_from_request(request)
-        if not bucketing_id:
-            if not alternate_id:
+        if bucketing_id is None:
+            if alternate_id is None:
                 raise ValueError('alternate_id must be provided if the world'
                                  ' object refuses to provide one.')
             bucketing_id = str(alternate_id)
-        if not getattr(request, 'feature_cache', False):
+        if getattr(request, 'feature_cache', None) is None:
             request.feature_cache = {}
         if bucketing_id in request.feature_cache:
             return request.feature_cache[bucketing_id]
@@ -82,17 +91,23 @@ class Feature(object):
     def variant_from_url(self, request):
         if self._public_url or self._world.is_admin(request) or self._world.is_internal(request):
             features = self._world.features_from_request(request)
-            if self._feature in features:
-                return self._url, 'o'
+            for f in features:
+                v = self._url
+                if ':' in f:
+                    f, v = f.split(':')
+                if self._feature == f:
+                    return v, 'o'
         return False
 
     def variant_for_user(self, request):
         name = self._world.user_name(request)
-        if name in self._users:
+        if self._users and name in self._users:
             return self._users[name], 'u'
         return False
 
     def variant_for_group(self, request):
+        if not self._groups:
+            return False
         groups = self._world.group_list(request)
         for group in groups:
             if group in self._groups:
@@ -100,16 +115,18 @@ class Feature(object):
         return False
 
     def variant_for_admin(self, request):
-        if self._world.is_admin(request):
+        if self._admin and self._world.is_admin(request):
             return self._admin, 'a'
         return False
 
     def variant_for_internal(self, request):
-        if self._world.is_internal(request):
+        if self._internal and self._world.is_internal(request):
             return self._internal, 'i'
         return False
 
     def variant_by_percentage(self, bucketing_id):
+        if not self._percentages:
+            return False
         n = 100 * self.randomish(bucketing_id)
         for percent in sorted(self._percentages.keys()):
             if n < percent:
@@ -117,4 +134,4 @@ class Feature(object):
         return False
 
     def randomish(self, bucketing_id):
-        return self._world.random() if self._random else self._world.hash(self._feature + '-' + bucketing_id)
+        return self._world.random() if self._random else self._world.hash(self._feature + '-' + str(bucketing_id))
