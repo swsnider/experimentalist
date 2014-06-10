@@ -1,3 +1,6 @@
+import hashlib
+import random
+
 class World(object):
     def log(self, *args):
         '''Logs the given args to somewhere.
@@ -35,3 +38,21 @@ class World(object):
     def group_list(self, request):
         '''Return a list of group of which the current user is a member.'''
         return []
+
+    def random(self):
+        '''Return a random number in the interval [0, 1).'''
+        return random.random()
+
+    def hash(self, hash_this):
+        '''Hash the given thing, and return a floating point number in [0, 1)
+
+        Perserves uniformity while doing so.'''
+        m = hashlib.sha256()
+        m.update(hash_this)
+        h = m.hexdigest()
+        vMax = float(2**len(h))
+        v = float(0)
+        for i in range(len(h)):
+            bit = 0 if int(h[i], 16) < 8 else 1
+            v = float((v * 2) + bit)
+        return float(v / vMax)
