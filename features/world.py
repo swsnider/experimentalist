@@ -4,7 +4,7 @@ class World(object):
 
         Args should be concatenated by spaces.
         '''
-        print *args
+        print args
 
     def get_bucket_from_request(self, request):
         '''Given a request, determine what ID to use for bucketing.
